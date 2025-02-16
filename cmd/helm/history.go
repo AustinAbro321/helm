@@ -25,13 +25,13 @@ import (
 	"github.com/gosuri/uitable"
 	"github.com/spf13/cobra"
 
-	"helm.sh/helm/v3/cmd/helm/require"
-	"helm.sh/helm/v3/pkg/action"
-	"helm.sh/helm/v3/pkg/chart"
-	"helm.sh/helm/v3/pkg/cli/output"
-	"helm.sh/helm/v3/pkg/release"
-	"helm.sh/helm/v3/pkg/releaseutil"
-	helmtime "helm.sh/helm/v3/pkg/time"
+	"helm.sh/helm/v4/cmd/helm/require"
+	"helm.sh/helm/v4/pkg/action"
+	"helm.sh/helm/v4/pkg/chart"
+	"helm.sh/helm/v4/pkg/cli/output"
+	"helm.sh/helm/v4/pkg/release"
+	"helm.sh/helm/v4/pkg/releaseutil"
+	helmtime "helm.sh/helm/v4/pkg/time"
 )
 
 var historyHelp = `
@@ -177,22 +177,15 @@ func formatAppVersion(c *chart.Chart) string {
 	return c.AppVersion()
 }
 
-func min(x, y int) int {
-	if x < y {
-		return x
-	}
-	return y
-}
-
 func compListRevisions(_ string, cfg *action.Configuration, releaseName string) ([]string, cobra.ShellCompDirective) {
 	client := action.NewHistory(cfg)
 
 	var revisions []string
 	if hist, err := client.Run(releaseName); err == nil {
-		for _, release := range hist {
-			appVersion := fmt.Sprintf("App: %s", release.Chart.Metadata.AppVersion)
-			chartDesc := fmt.Sprintf("Chart: %s-%s", release.Chart.Metadata.Name, release.Chart.Metadata.Version)
-			revisions = append(revisions, fmt.Sprintf("%s\t%s, %s", strconv.Itoa(release.Version), appVersion, chartDesc))
+		for _, version := range hist {
+			appVersion := fmt.Sprintf("App: %s", version.Chart.Metadata.AppVersion)
+			chartDesc := fmt.Sprintf("Chart: %s-%s", version.Chart.Metadata.Name, version.Chart.Metadata.Version)
+			revisions = append(revisions, fmt.Sprintf("%s\t%s, %s", strconv.Itoa(version.Version), appVersion, chartDesc))
 		}
 		return revisions, cobra.ShellCompDirectiveNoFileComp
 	}

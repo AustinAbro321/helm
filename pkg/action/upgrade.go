@@ -28,14 +28,14 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/cli-runtime/pkg/resource"
 
-	"helm.sh/helm/v3/pkg/chart"
-	"helm.sh/helm/v3/pkg/chartutil"
-	"helm.sh/helm/v3/pkg/kube"
-	"helm.sh/helm/v3/pkg/postrender"
-	"helm.sh/helm/v3/pkg/registry"
-	"helm.sh/helm/v3/pkg/release"
-	"helm.sh/helm/v3/pkg/releaseutil"
-	"helm.sh/helm/v3/pkg/storage/driver"
+	"helm.sh/helm/v4/pkg/chart"
+	"helm.sh/helm/v4/pkg/chartutil"
+	"helm.sh/helm/v4/pkg/kube"
+	"helm.sh/helm/v4/pkg/postrender"
+	"helm.sh/helm/v4/pkg/registry"
+	"helm.sh/helm/v4/pkg/release"
+	"helm.sh/helm/v4/pkg/releaseutil"
+	"helm.sh/helm/v4/pkg/storage/driver"
 )
 
 // Upgrade is the action for upgrading releases.
@@ -64,8 +64,8 @@ type Upgrade struct {
 	SkipCRDs bool
 	// Timeout is the timeout for this operation
 	Timeout time.Duration
-	// Wait determines whether the wait operation should be performed after the upgrade is requested.
-	Wait bool
+	// Wait determines whether the wait operation should be performed and what type of wait.
+	Wait kube.WaitStrategy
 	// WaitForJobs determines whether the wait operation for the Jobs should be performed after the upgrade is requested.
 	WaitForJobs bool
 	// DisableHooks disables hook processing if set to true.
@@ -104,7 +104,7 @@ type Upgrade struct {
 	// Description is the description of this operation
 	Description string
 	Labels      map[string]string
-	// PostRender is an optional post-renderer
+	// PostRenderer is an optional post-renderer
 	//
 	// If this is non-nil, then after templates are rendered, they will be sent to the
 	// post renderer before sending to the Kubernetes API server.
@@ -155,7 +155,14 @@ func (u *Upgrade) RunWithContext(ctx context.Context, name string, chart *chart.
 
 	// Make sure if Atomic is set, that wait is set as well. This makes it so
 	// the user doesn't have to specify both
-	u.Wait = u.Wait || u.Atomic
+	if u.Wait == kube.HookOnlyStrategy {
+		if u.Atomic {
+			u.Wait = kube.StatusWatcherStrategy
+		}
+	}
+	if err := u.cfg.KubeClient.SetWaiter(u.Wait); err != nil {
+		return nil, fmt.Errorf("failed to set kube client waiter: %w", err)
+	}
 
 	if err := chartutil.ValidateReleaseName(name); err != nil {
 		return nil, errors.Errorf("release name is invalid: %s", name)
@@ -243,7 +250,7 @@ func (u *Upgrade) prepareUpgrade(name string, chart *chart.Chart, vals map[strin
 		return nil, nil, err
 	}
 
-	if err := chartutil.ProcessDependenciesWithMerge(chart, vals); err != nil {
+	if err := chartutil.ProcessDependencies(chart, vals); err != nil {
 		return nil, nil, err
 	}
 
@@ -443,22 +450,17 @@ func (u *Upgrade) releasingUpgrade(c chan<- resultMessage, upgradedRelease *rele
 		}
 	}
 
-	if u.Wait {
-		u.cfg.Log(
-			"waiting for release %s resources (created: %d updated: %d  deleted: %d)",
-			upgradedRelease.Name, len(results.Created), len(results.Updated), len(results.Deleted))
-		if u.WaitForJobs {
-			if err := u.cfg.KubeClient.WaitWithJobs(target, u.Timeout); err != nil {
-				u.cfg.recordRelease(originalRelease)
-				u.reportToPerformUpgrade(c, upgradedRelease, results.Created, err)
-				return
-			}
-		} else {
-			if err := u.cfg.KubeClient.Wait(target, u.Timeout); err != nil {
-				u.cfg.recordRelease(originalRelease)
-				u.reportToPerformUpgrade(c, upgradedRelease, results.Created, err)
-				return
-			}
+	if u.WaitForJobs {
+		if err := u.cfg.KubeClient.WaitWithJobs(target, u.Timeout); err != nil {
+			u.cfg.recordRelease(originalRelease)
+			u.reportToPerformUpgrade(c, upgradedRelease, results.Created, err)
+			return
+		}
+	} else {
+		if err := u.cfg.KubeClient.Wait(target, u.Timeout); err != nil {
+			u.cfg.recordRelease(originalRelease)
+			u.reportToPerformUpgrade(c, upgradedRelease, results.Created, err)
+			return
 		}
 	}
 
@@ -526,7 +528,14 @@ func (u *Upgrade) failRelease(rel *release.Release, created kube.ResourceList, e
 
 		rollin := NewRollback(u.cfg)
 		rollin.Version = filteredHistory[0].Version
-		rollin.Wait = true
+		if u.Wait == kube.HookOnlyStrategy {
+			rollin.Wait = kube.StatusWatcherStrategy
+		}
+		// TODO pretty sure this is unnecessary as the waiter is already set if atomic at the start of upgrade
+		werr := u.cfg.KubeClient.SetWaiter(u.Wait)
+		if werr != nil {
+			return rel, errors.Wrapf(herr, "an error occurred while creating the waiter. original upgrade error: %s", err)
+		}
 		rollin.WaitForJobs = u.WaitForJobs
 		rollin.DisableHooks = u.DisableHooks
 		rollin.Recreate = u.Recreate

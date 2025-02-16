@@ -23,8 +23,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"helm.sh/helm/v3/cmd/helm/require"
-	"helm.sh/helm/v3/pkg/action"
+	"helm.sh/helm/v4/cmd/helm/require"
+	"helm.sh/helm/v4/pkg/action"
 )
 
 const showDesc = `
@@ -57,7 +57,7 @@ of the CustomResourceDefinition files
 `
 
 func newShowCmd(cfg *action.Configuration, out io.Writer) *cobra.Command {
-	client := action.NewShowWithConfig(action.ShowAll, cfg)
+	client := action.NewShow(action.ShowAll, cfg)
 
 	showCommand := &cobra.Command{
 		Use:     "show",

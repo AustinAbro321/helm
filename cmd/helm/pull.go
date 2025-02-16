@@ -23,8 +23,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"helm.sh/helm/v3/cmd/helm/require"
-	"helm.sh/helm/v3/pkg/action"
+	"helm.sh/helm/v4/cmd/helm/require"
+	"helm.sh/helm/v4/pkg/action"
 )
 
 const pullDesc = `
@@ -43,7 +43,7 @@ result in an error, and the chart will not be saved locally.
 `
 
 func newPullCmd(cfg *action.Configuration, out io.Writer) *cobra.Command {
-	client := action.NewPullWithOpts(action.WithConfig(cfg))
+	client := action.NewPull(action.WithConfig(cfg))
 
 	cmd := &cobra.Command{
 		Use:     "pull [chart URL | repo/chartname] [...]",

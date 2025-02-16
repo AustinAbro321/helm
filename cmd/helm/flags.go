@@ -28,12 +28,13 @@ import (
 	"github.com/spf13/pflag"
 	"k8s.io/klog/v2"
 
-	"helm.sh/helm/v3/pkg/action"
-	"helm.sh/helm/v3/pkg/cli/output"
-	"helm.sh/helm/v3/pkg/cli/values"
-	"helm.sh/helm/v3/pkg/helmpath"
-	"helm.sh/helm/v3/pkg/postrender"
-	"helm.sh/helm/v3/pkg/repo"
+	"helm.sh/helm/v4/pkg/action"
+	"helm.sh/helm/v4/pkg/cli/output"
+	"helm.sh/helm/v4/pkg/cli/values"
+	"helm.sh/helm/v4/pkg/helmpath"
+	"helm.sh/helm/v4/pkg/kube"
+	"helm.sh/helm/v4/pkg/postrender"
+	"helm.sh/helm/v4/pkg/repo"
 )
 
 const (
@@ -49,6 +50,50 @@ func addValueOptionsFlags(f *pflag.FlagSet, v *values.Options) {
 	f.StringArrayVar(&v.FileValues, "set-file", []string{}, "set values from respective files specified via the command line (can specify multiple or separate values with commas: key1=path1,key2=path2)")
 	f.StringArrayVar(&v.JSONValues, "set-json", []string{}, "set JSON values on the command line (can specify multiple or separate values with commas: key1=jsonval1,key2=jsonval2)")
 	f.StringArrayVar(&v.LiteralValues, "set-literal", []string{}, "set a literal STRING value on the command line")
+}
+
+func AddWaitFlag(cmd *cobra.Command, wait *kube.WaitStrategy) {
+	cmd.Flags().Var(
+		newWaitValue(kube.HookOnlyStrategy, wait),
+		"wait",
+		"if set, will wait until all resources are in the expected state before marking the operation as successful. It will wait for as long as --timeout. Options are (true, false, watcher, and legacy)",
+	)
+	// Sets the strategy to use the watcher strategy if `--wait` is used without an argument
+	cmd.Flags().Lookup("wait").NoOptDefVal = string(kube.StatusWatcherStrategy)
+}
+
+type waitValue kube.WaitStrategy
+
+func newWaitValue(defaultValue kube.WaitStrategy, ws *kube.WaitStrategy) *waitValue {
+	*ws = defaultValue
+	return (*waitValue)(ws)
+}
+
+func (ws *waitValue) String() string {
+	if ws == nil {
+		return ""
+	}
+	return string(*ws)
+}
+
+func (ws *waitValue) Set(s string) error {
+	switch s {
+	case string(kube.StatusWatcherStrategy), string(kube.LegacyStrategy):
+		*ws = waitValue(s)
+		return nil
+	case "true":
+		*ws = waitValue(kube.StatusWatcherStrategy)
+		return nil
+	case "false":
+		*ws = ""
+		return nil
+	default:
+		return fmt.Errorf("invalid wait input %q. Valid inputs are true, false, %s, and %s", s, kube.StatusWatcherStrategy, kube.LegacyStrategy)
+	}
+}
+
+func (ws *waitValue) Type() string {
+	return "WaitStrategy"
 }
 
 func addChartPathOptionsFlags(f *pflag.FlagSet, c *action.ChartPathOptions) {
