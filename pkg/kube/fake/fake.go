@@ -36,6 +36,7 @@ type FailingKubeClient struct {
 	CreateError                error
 	GetError                   error
 	WaitError                  error
+	WaitDeleteError            error
 	DeleteError                error
 	DeleteWithPropagationError error
 	WatchUntilReadyError       error
@@ -82,8 +83,8 @@ func (f *FailingKubeClient) WaitWithJobs(resources kube.ResourceList, d time.Dur
 
 // WaitForDelete returns the configured error if set or prints
 func (f *FailingKubeClient) WaitForDelete(resources kube.ResourceList, d time.Duration) error {
-	if f.WaitError != nil {
-		return f.WaitError
+	if f.WaitDeleteError != nil {
+		return f.WaitDeleteError
 	}
 	return f.PrintingKubeClient.WaitForDelete(resources, d)
 }

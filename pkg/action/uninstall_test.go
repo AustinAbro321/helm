@@ -99,7 +99,7 @@ func TestUninstallRelease_Wait(t *testing.T) {
 	}`
 	unAction.cfg.Releases.Create(rel)
 	failer := unAction.cfg.KubeClient.(*kubefake.FailingKubeClient)
-	failer.WaitError = fmt.Errorf("U timed out")
+	failer.WaitDeleteError = fmt.Errorf("U timed out")
 	unAction.cfg.KubeClient = failer
 	res, err := unAction.Run(rel.Name)
 	is.Error(err)
